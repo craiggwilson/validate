@@ -457,7 +457,19 @@ type selfValidator struct {
 	v int
 }
 
-func (sv *selfValidator) Validate(ctx validate.Context) error {
+func (sv selfValidator) Validate(ctx validate.Context) error {
+	if sv.v > 3 {
+		return errors.New("AHAHAH")
+	}
+
+	return nil
+}
+
+type selfValidatorPtrRecv struct {
+	v int
+}
+
+func (sv *selfValidatorPtrRecv) Validate(ctx validate.Context) error {
 	if sv.v > 3 {
 		return errors.New("AHAHAH")
 	}
@@ -495,7 +507,48 @@ func TestValidate_Self(t *testing.T) {
 			},
 			errors.New("AHAHAH"),
 		},
+		{
+			"self validate pointer receiver success",
+			selfValidatorPtrRecv{
+				v: 0,
+			},
+			nil,
+		},
+		{
+			"self validate pointer receiver fail",
+			selfValidatorPtrRecv{
+				v: 4,
+			},
+			errors.New("AHAHAH"),
+		},
+		{
+			"self validate pointer receiver pointer success",
+			&selfValidatorPtrRecv{
+				v: 0,
+			},
+			nil,
+		},
+		{
+			"self validate pointer receiver pointer fail",
+			&selfValidatorPtrRecv{
+				v: 4,
+			},
+			errors.New("AHAHAH"),
+		},
 	})
+}
+
+type selfAndTagValidator struct {
+	a int `validate:"gt(0)"`
+	b int
+}
+
+func (f selfAndTagValidator) Validate(ctx validate.Context) error {
+	if f.b <= 5 {
+		return errors.New("b must be greater than 5")
+	}
+
+	return nil
 }
 
 func TestValidate_StructCycle(t *testing.T) {
@@ -510,6 +563,38 @@ func TestValidate_StructCycle(t *testing.T) {
 				c: &cycle{},
 			},
 			errors.New(`"c" "c" must not be nil`),
+		},
+		{
+			"no error on Validate() implementation or tag",
+			selfAndTagValidator{
+				a: 3,
+				b: 8,
+			},
+			nil,
+		},
+		{
+			"error from Validate() implementation",
+			selfAndTagValidator{
+				a: 3,
+				b: 0,
+			},
+			errors.New("b must be greater than 5"),
+		},
+		{
+			"error from tag validator",
+			selfAndTagValidator{
+				a: -1,
+				b: 8,
+			},
+			errors.New("\"a\" must be greater than 0"),
+		},
+		{
+			"Validate() implementation and tag error",
+			selfAndTagValidator{
+				a: -1,
+				b: 0,
+			},
+			errors.New("b must be greater than 5 and \"a\" must be greater than 0"),
 		},
 	})
 }

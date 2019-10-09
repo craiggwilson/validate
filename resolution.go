@@ -43,34 +43,44 @@ func (ctx *ResolutionContext) ParseStructTags(tagName string) (*StructTagParseRe
 }
 
 func buildValidator(ctx ResolutionContext) (Validator, error) {
-	if ctx.Type.Implements(tValidator) {
-		return ValidatorFunc(func(ctx Context) error {
+	// We want to consider only the base type T. If we get *T, then avoid adding
+	// its Validator() implementation for now, and pass it to
+	// buildNonImplValidator(), which will strip off the * and call back here.
+	var validatorImpl Validator = NoOpValidator{}
+	if ctx.Type.Implements(tValidator) && reflect.PtrTo(ctx.Type).Implements(tValidator) { // Copy receiver.
+		validatorImpl = ValidatorFunc(func(ctx Context) error {
 			v := ctx.Value.Interface().(Validator)
 			return v.Validate(ctx)
-		}), nil
+		})
+	} else if reflect.PtrTo(ctx.Type).Implements(tValidator) { // Pointer receiver.
+		validatorImpl = ValidatorFunc(func(ctx Context) error {
+			var ptr reflect.Value
+			if ctx.Value.CanAddr() {
+				ptr = ctx.Value.Addr()
+			} else {
+				ptr = reflect.New(ctx.Value.Type())
+				ptr.Elem().Set(ctx.Value)
+			}
+
+			v := ptr.Interface().(Validator)
+			return v.Validate(ctx)
+		})
 	}
 
+	nonImplValidator, err := buildNonImplValidator(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return And(validatorImpl, nonImplValidator), nil
+}
+
+func buildNonImplValidator(ctx ResolutionContext) (Validator, error) {
 	switch ctx.Type.Kind() {
 	case reflect.Struct:
-		// let's check to see if the pointer to the type implements
-		// Validator and, if so, we'll call it that way.
-		if reflect.PtrTo(ctx.Type).Implements(tValidator) {
-			return ValidatorFunc(func(ctx Context) error {
-				var ptr reflect.Value
-				if ctx.Value.CanAddr() {
-					ptr = ctx.Value.Addr()
-				} else {
-					ptr = reflect.New(ctx.Value.Type())
-					ptr.Elem().Set(ctx.Value)
-				}
-
-				v := ptr.Interface().(Validator)
-				return v.Validate(ctx)
-			}), nil
-		}
-
 		return buildStructValidator(ctx)
 	case reflect.Ptr:
+		// If we got *T, get T and have it hit buildValidator() eventually.
 		v, err := ctx.LookupValidator(ctx.Type.Elem())
 		if err != nil {
 			return nil, err

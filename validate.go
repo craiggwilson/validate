@@ -1,6 +1,8 @@
 package validate
 
-import "reflect"
+import (
+	"reflect"
+)
 
 // Validate performs validation on the obj and returns an error if one existed.
 //
@@ -26,8 +28,8 @@ func Validate(obj interface{}, options ...Option) error {
 	}
 
 	ctx := Context{
-		Options:  opts,
-		Value: rval,
+		Options: opts,
+		Value:   rval,
 	}
 
 	return validator.Validate(ctx)
