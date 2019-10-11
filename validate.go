@@ -32,5 +32,8 @@ func Validate(obj interface{}, options ...Option) (error, error) {
 		Value:   rval,
 	}
 
+	if ctx.Options.WarningsAsErrors {
+		return MergeWarning(validator.Validate(ctx)), nil
+	}
 	return validator.Validate(ctx)
 }
