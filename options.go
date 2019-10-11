@@ -20,10 +20,14 @@ func defaultOptions() *Options {
 
 // Options holds the options for validation.
 type Options struct {
-	Registry      *Registry
-	StopOnError   bool
-	StopOnWarning bool
-	Validator     Validator
+	Registry         *Registry
+	StopOnError      bool
+	WarningsAsErrors bool
+	Validator        Validator
+}
+
+func (o *Options) shouldStopOnWarnings() bool {
+	return o.StopOnError && o.WarningsAsErrors
 }
 
 // Option provides the ability to alter options.
@@ -37,16 +41,16 @@ func WithRegistry(r *Registry) Option {
 }
 
 // WithStopOnError indicates to the validator to stop when it finds an error.
-func WithStopOnError(stopOnError bool) Option {
+func WithStopOnError() Option {
 	return func(opts *Options) {
 		opts.StopOnError = true
 	}
 }
 
-// WithStopOnWarning indicates to the validator to stop when it finds an error.
-func WithStopOnWarning(stopOnWarning bool) Option {
+// WithWarningsAsErrors indicates that warnings should be treated as errors.
+func WithWarningsAsErrors() Option {
 	return func(opts *Options) {
-		opts.StopOnWarning = true
+		opts.WarningsAsErrors = true
 	}
 }
 

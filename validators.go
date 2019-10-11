@@ -43,7 +43,7 @@ func And(validators ...Validator) Validator {
 			}
 			if warning != nil {
 				warnings = append(warnings, warning)
-				if ctx.Options.StopOnWarning {
+				if ctx.Options.shouldStopOnWarnings() {
 					break
 				}
 			}
@@ -264,7 +264,7 @@ func Items(validator Validator) Validator {
 					case *Error:
 						errs = append(errs, newErrorf("[%d] %v", i, err))
 						if ctx.Options.StopOnError {
-							return errs[0], warning
+							break
 						}
 					default:
 						return err, warning
@@ -272,6 +272,9 @@ func Items(validator Validator) Validator {
 				}
 				if warning != nil {
 					warnings = append(warnings, newWarningf("[%d] %v", i, warning))
+					if ctx.Options.shouldStopOnWarnings() {
+						break
+					}
 				}
 			}
 		case reflect.Map:
@@ -289,7 +292,7 @@ func Items(validator Validator) Validator {
 					case *Error:
 						errs = append(errs, newErrorf("[%v] %v", mi.Key(), err))
 						if ctx.Options.StopOnError {
-							return errs[0], warning
+							break
 						}
 					default:
 						return err, warning
@@ -297,6 +300,9 @@ func Items(validator Validator) Validator {
 				}
 				if warning != nil {
 					warnings = append(warnings, newWarningf("[%v] %v", mi.Key(), warning))
+					if ctx.Options.shouldStopOnWarnings() {
+						break
+					}
 				}
 			}
 		default:
