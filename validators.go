@@ -245,7 +245,7 @@ func Items(validator Validator) Validator {
 					}
 				}
 				if warning != nil {
-					warnings = append(warnings, newWarningf("[%d] %v", i, warning))
+					warnings = append(warnings, newErrorf("[%d] %v", i, warning))
 					if ctx.Options.shouldStopOnWarnings() {
 						break
 					}
@@ -273,7 +273,7 @@ func Items(validator Validator) Validator {
 					}
 				}
 				if warning != nil {
-					warnings = append(warnings, newWarningf("[%v] %v", mi.Key(), warning))
+					warnings = append(warnings, newErrorf("[%v] %v", mi.Key(), warning))
 					if ctx.Options.shouldStopOnWarnings() {
 						break
 					}
