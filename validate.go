@@ -4,13 +4,13 @@ import (
 	"reflect"
 )
 
-// Validate performs validation on the obj and returns an error if one existed.
+// Validate performs validation on the obj and returns an error and a warning if it existed, respectively.
 //
 // Example:
 //   if err := validate.Validate(MyObject{}); err != nil {
 //   	// handle validation error
 //   }
-func Validate(obj interface{}, options ...Option) error {
+func Validate(obj interface{}, options ...Option) (error, error) {
 	opts := defaultOptions()
 	for _, option := range options {
 		option(opts)
@@ -23,7 +23,7 @@ func Validate(obj interface{}, options ...Option) error {
 		var err error
 		validator, err = opts.Registry.LookupValidator(rval.Type())
 		if err != nil {
-			return err
+			return err, nil
 		}
 	}
 

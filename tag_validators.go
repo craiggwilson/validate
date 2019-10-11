@@ -238,11 +238,11 @@ func NotZeroFactory(ctx ResolutionContext, name string, args []string) (Validato
 		return nil, InvalidTagArgumentsError{Message: "no arguments are allowed", ValidatorName: name, Args: args}
 	}
 
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		if isZero(ctx.Value) {
-			newErrorf("must not be \"%v\"", zeroValue(ctx.Value.Type()))
+			return newErrorf("must not be \"%v\"", zeroValue(ctx.Value.Type())), nil
 		}
-		return nil
+		return nil, nil
 	}), nil
 }
 

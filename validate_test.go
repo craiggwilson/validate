@@ -457,24 +457,24 @@ type selfValidator struct {
 	v int
 }
 
-func (sv selfValidator) Validate(ctx validate.Context) error {
+func (sv selfValidator) Validate(ctx validate.Context) (error, error) {
 	if sv.v > 3 {
-		return errors.New("AHAHAH")
+		return errors.New("AHAHAH"), nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 type selfValidatorPtrRecv struct {
 	v int
 }
 
-func (sv *selfValidatorPtrRecv) Validate(ctx validate.Context) error {
+func (sv *selfValidatorPtrRecv) Validate(ctx validate.Context) (error, error) {
 	if sv.v > 3 {
-		return errors.New("AHAHAH")
+		return errors.New("AHAHAH"), nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 func TestValidate_Self(t *testing.T) {
@@ -543,12 +543,12 @@ type selfAndTagValidator struct {
 	b int
 }
 
-func (f selfAndTagValidator) Validate(ctx validate.Context) error {
+func (f selfAndTagValidator) Validate(ctx validate.Context) (error, error) {
 	if f.b <= 5 {
-		return errors.New("b must be greater than 5")
+		return errors.New("b must be greater than 5"), nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 func TestValidate_StructCycle(t *testing.T) {
@@ -599,19 +599,133 @@ func TestValidate_StructCycle(t *testing.T) {
 	})
 }
 
-func runTestCases(t *testing.T, testCases []testCase) {
-	for _, tc := range testCases {
+type InnerWarning struct {
+	C int
+}
+
+func (i *InnerWarning) Validate(ctx validate.Context) (error, error) {
+	if i.C < 3 {
+		return nil, errors.New("c should not be less than 3 but that is ok")
+	}
+
+	return nil, nil
+}
+
+type warningValidator struct {
+	a int
+	b int           `validate:"gt(3)"`
+	C *InnerWarning `validate:"struct"`
+}
+
+func (w *warningValidator) Validate(ctx validate.Context) (error, error) {
+	if w.a < 3 {
+		return nil, errors.New("a should not be less than 3 but that is ok")
+	}
+
+	return nil, nil
+}
+
+type warningTestCase struct {
+	name     string
+	instance interface{}
+	err      error
+	warn     error
+}
+
+func TestValidate_Warnings(t *testing.T) {
+	validInner := &InnerWarning{
+		C: 6,
+	}
+	invalidInner := &InnerWarning{
+		C: 1,
+	}
+	for _, tc := range []warningTestCase{
+		{
+			"no error",
+			&warningValidator{
+				a: 5,
+				b: 5,
+				C: validInner,
+			},
+			nil,
+			nil,
+		},
+		{
+			"single error",
+			&warningValidator{
+				a: 5,
+				b: 2,
+				C: validInner,
+			},
+			errors.New("\"b\" must be greater than 3"),
+			nil,
+		},
+		{
+			"single warning",
+			&warningValidator{
+				a: 2,
+				b: 5,
+				C: validInner,
+			},
+			nil,
+			errors.New("a should not be less than 3 but that is ok"),
+		},
+		{
+			"double warning",
+			&warningValidator{
+				a: 2,
+				b: 5,
+				C: invalidInner,
+			},
+			nil,
+			errors.New("a should not be less than 3 but that is ok and c should not be less than 3 but that is ok"),
+		},
+		{
+			"all warnings and errors",
+			&warningValidator{
+				a: 2,
+				b: 2,
+				C: invalidInner,
+			},
+			errors.New("\"b\" must be greater than 3"),
+			errors.New("a should not be less than 3 but that is ok and c should not be less than 3 but that is ok"),
+		},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validate.Validate(&tc.instance)
-			if err != nil && tc.err != nil && err.Error() != tc.err.Error() {
-				t.Fatalf("expected error %v, but got %v", tc.err, err)
-			} else if err != nil && tc.err == nil {
-				t.Fatalf("expected no error, but got %v", err)
-			} else if err == nil && tc.err != nil {
-				t.Fatalf("expected error %v, but got none", tc.err)
+			runTestCase(t, testCase{
+				tc.name,
+				tc.instance,
+				tc.err,
+			})
+			_, warn := validate.Validate(&tc.instance)
+			if warn != nil && tc.warn != nil && warn.Error() != tc.warn.Error() {
+				t.Fatalf("expected warning %v, but got %v", tc.warn, warn)
+			} else if warn != nil && tc.warn == nil {
+				t.Fatalf("expected no warning, but got %v", warn)
+			} else if warn == nil && tc.warn != nil {
+				t.Fatalf("expected warning %v, but got none", tc.warn)
 			}
 		})
 	}
+}
+
+func runTestCases(t *testing.T, testCases []testCase) {
+	for _, tc := range testCases {
+		runTestCase(t, tc)
+	}
+}
+
+func runTestCase(t *testing.T, tc testCase) {
+	t.Run(tc.name, func(t *testing.T) {
+		err, _ := validate.Validate(&tc.instance)
+		if err != nil && tc.err != nil && err.Error() != tc.err.Error() {
+			t.Fatalf("expected error %v, but got %v", tc.err, err)
+		} else if err != nil && tc.err == nil {
+			t.Fatalf("expected no error, but got %v", err)
+		} else if err == nil && tc.err != nil {
+			t.Fatalf("expected error %v, but got none", tc.err)
+		}
+	})
 }
 
 func boolPtr(b bool) *bool {

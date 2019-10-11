@@ -5,6 +5,25 @@ import (
 	"reflect"
 )
 
+func newWarning(msg string) *Warning {
+	return &Warning{Message: msg}
+}
+
+func newWarningf(msg string, args ...interface{}) *Warning {
+	return &Warning{Message: fmt.Sprintf(msg, args...)}
+}
+
+// Warning is a validation warning.
+// TODO(may): Can you write this as wrapper for Error?
+type Warning struct {
+	Message string
+}
+
+// Warning implements the error interface.
+func (e *Warning) Error() string {
+	return e.Message
+}
+
 func newError(msg string) *Error {
 	return &Error{Message: msg}
 }
