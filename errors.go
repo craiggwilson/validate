@@ -5,16 +5,46 @@ import (
 	"reflect"
 )
 
-func wrapError(err error, warning bool) error {
-	if err != nil {
+// MergeWarning is a convenience function for treating a warning as an error.
+func MergeWarning(err error, warning error) error {
+	if err == nil && warning == nil {
 		return nil
 	}
 
-	if warning {
-		return newWarning(err.Error())
+	errs := []error{}
+	if err != nil {
+		errs = append(errs, err)
+	}
+	if warning != nil {
+		errs = append(errs, warning)
+	}
+	return newError(mergeErrorMessages(errs, "and"))
+}
+
+func mergeErrorMessages(errs []error, sep string) string {
+	paddedSep := fmt.Sprintf(" %s ", sep)
+	if len(errs) == 0 {
+		panic("must provide at least one error")
+	}
+	errmsg := errs[0].Error()
+	for i := 1; i < len(errs); i++ {
+		errmsg += paddedSep + errs[i].Error()
 	}
 
-	return newError(err.Error())
+	return errmsg
+}
+
+func mergeWarningsAndErrors(warnings []error, errs []error, sep string) (error, error) {
+	var warning error
+	if len(warnings) > 0 {
+		warning = newWarning(mergeErrorMessages(warnings, sep))
+	}
+
+	if len(errs) > 0 {
+		return newError(mergeErrorMessages(errs, sep)), warning
+	}
+
+	return nil, warning
 }
 
 func newWarning(msg string) *Warning {
