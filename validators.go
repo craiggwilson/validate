@@ -8,16 +8,16 @@ import (
 	"strings"
 )
 
-// Validator performs validation on a value.
+// Validator performs validation on a value and returns an error and a warning.
 type Validator interface {
-	Validate(Context) error
+	Validate(Context) (error, error)
 }
 
 // ValidatorFunc is an adapter for a function that implements the Validator interface.
-type ValidatorFunc func(Context) error
+type ValidatorFunc func(Context) (error, error)
 
 // Validate implements the Validator interface.
-func (f ValidatorFunc) Validate(ctx Context) error {
+func (f ValidatorFunc) Validate(ctx Context) (error, error) {
 	return f(ctx)
 }
 
@@ -30,62 +30,79 @@ func And(validators ...Validator) Validator {
 		return validators[0]
 	}
 
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		var errs []error
+		var warnings []error
 		for _, v := range validators {
-			err := v.Validate(ctx)
+			err, warning := v.Validate(ctx)
 			if err != nil {
 				errs = append(errs, err)
 				if ctx.Options.StopOnError {
 					break
 				}
 			}
+			if warning != nil {
+				warnings = append(warnings, warning)
+				if ctx.Options.StopOnWarning {
+					break
+				}
+			}
+		}
+
+		var warning error
+		if len(warnings) > 0 {
+			warningmsg := warnings[0].Error()
+			for i := 1; i < len(warnings); i++ {
+				warningmsg += " and " + warnings[i].Error()
+			}
+
+			warning = newWarning(warningmsg)
 		}
 
 		if len(errs) > 0 {
-			msg := errs[0].Error()
+			errmsg := errs[0].Error()
 			for i := 1; i < len(errs); i++ {
-				msg += " and " + errs[i].Error()
+				errmsg += " and " + errs[i].Error()
 			}
 
-			return newError(msg)
+			return newError(errmsg), warning
 		}
 
-		return nil
+		return nil, warning
 	})
 }
 
 // CustomMessage wraps a validator's error with a custom message.
 func CustomMessage(validator Validator, msg string) Validator {
-	return ValidatorFunc(func(ctx Context) error {
-		err := validator.Validate(ctx)
+	return ValidatorFunc(func(ctx Context) (error, error) {
+		err, warning := validator.Validate(ctx)
 		if err != nil {
 			switch err.(type) {
 			case *Error:
-				return newError(msg)
+				return newError(msg), warning
 			default:
-				return err
+				return err, warning
 			}
 		}
 
-		return nil
+		return nil, warning
 	})
 }
 
 // Empty requires the length of a string, array, slice, or map to be 0.
 func Empty() Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		switch val.Kind() {
 		case reflect.String, reflect.Array, reflect.Slice, reflect.Map:
 			if val.Len() != 0 {
-				return newError("must be empty")
+				return newError("must be empty"), nil
 			}
-			return nil
+			return nil, nil
 		case reflect.Ptr:
-			return newError("must be empty")
+			return newError("must be empty"), nil
 		default:
-			return isEmptyAllowed(val.Type(), "empty", nil)
+			return isEmptyAllowed(val.Type(), "empty", nil), nil
 		}
 	})
 }
@@ -103,125 +120,126 @@ func isEmptyAllowed(t reflect.Type, name string, args []string) error {
 
 // Equal requires the value to be equal to the specified value.
 func Equal(other interface{}) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		if val.Kind() == reflect.Ptr {
-			return newErrorf("must be equal to %v", other)
+			return newErrorf("must be equal to %v", other), nil
 		}
 
 		r, err := cmp(val, reflect.ValueOf(other))
 		if err != nil {
-			return err
+			return err, nil
 		}
 
 		if r != 0 {
-			return newErrorf("must be equal to %v", other)
+			return newErrorf("must be equal to %v", other), nil
 		}
 
-		return nil
+		return nil, nil
 	})
 }
 
 // Field wraps a validator in a field validator.
 func Field(name string, validator Validator) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		if !ctx.Value.IsValid() {
-			return nil
+			return nil, nil
 		}
 
 		val := ctx.Value.FieldByName(name)
 		if !val.IsValid() {
-			return UnknownFieldError{Type: ctx.Value.Type(), Name: name}
+			return UnknownFieldError{Type: ctx.Value.Type(), Name: name}, nil
 		}
 
 		fctx := ctx
 		fctx.Parent = &ctx
 		fctx.Value = val
 
-		err := validator.Validate(fctx)
+		err, warning := validator.Validate(fctx)
 		if err != nil {
 			switch err.(type) {
 			case *Error:
 				sf, _ := ctx.Value.Type().FieldByName(name)
-				return newErrorf("%q %v", sf.Name, err)
+				return newErrorf("%q %v", sf.Name, err), warning
 			default:
-				return err
+				return err, warning
 			}
 		}
 
-		return nil
+		return nil, warning
 	})
 }
 
 // GreaterThan requires the value to be greater than the specified value.
 func GreaterThan(other interface{}) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		if val.Kind() == reflect.Ptr {
-			return newErrorf("must be greater than %v", other)
+			return newErrorf("must be greater than %v", other), nil
 		}
 
 		r, err := cmp(val, reflect.ValueOf(other))
 		if err != nil {
-			return err
+			return err, nil
 		}
 
 		if r <= 0 {
-			return newErrorf("must be greater than %v", other)
+			return newErrorf("must be greater than %v", other), nil
 		}
 
-		return nil
+		return nil, nil
 	})
 }
 
 // GreaterThanOrEqual requires the value to be greater than or equal to the specified value.
 func GreaterThanOrEqual(other interface{}) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		if val.Kind() == reflect.Ptr {
-			return newErrorf("must be greater than or equal to %v", other)
+			return newErrorf("must be greater than or equal to %v", other), nil
 		}
 
 		r, err := cmp(val, reflect.ValueOf(other))
 		if err != nil {
-			return err
+			return err, nil
 		}
 
 		if r < 0 {
-			return newErrorf("must be greater than or equal to %v", other)
+			return newErrorf("must be greater than or equal to %v", other), nil
 		}
 
-		return nil
+		return nil, nil
 	})
 }
 
 // In requires a value to be one of the specified values.
 func In(values ...interface{}) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		if val.Kind() == reflect.Ptr {
-			return newErrorf("must be one of %v", values)
+			return newErrorf("must be one of %v", values), nil
 		}
 
 		for _, v := range values {
 			r, err := cmp(val, reflect.ValueOf(v))
 			if err != nil {
-				return err
+				return err, nil
 			}
 
 			if r == 0 {
-				return nil
+				return nil, nil
 			}
 		}
 
-		return newErrorf("must be one of %v", values)
+		return newErrorf("must be one of %v", values), nil
 	})
 }
 
 // Items validates that all the items of a slice, array.
 func Items(validator Validator) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		var errs []error
+		var warnings []error
 		val := indirect(ctx.Value)
 		switch val.Kind() {
 		case reflect.Array, reflect.Slice:
@@ -233,17 +251,20 @@ func Items(validator Validator) Validator {
 				fctx.Parent = &ctx
 				fctx.Value = item
 
-				err := validator.Validate(fctx)
+				err, warning := validator.Validate(fctx)
 				if err != nil {
 					switch err.(type) {
 					case *Error:
 						errs = append(errs, newErrorf("[%d] %v", i, err))
 						if ctx.Options.StopOnError {
-							return errs[0]
+							return errs[0], warning
 						}
 					default:
-						return err
+						return err, warning
 					}
+				}
+				if warning != nil {
+					warnings = append(warnings, newWarningf("[%d] %v", i, warning))
 				}
 			}
 		case reflect.Map:
@@ -255,21 +276,35 @@ func Items(validator Validator) Validator {
 				fctx.Parent = &ctx
 				fctx.Value = item
 
-				err := validator.Validate(fctx)
+				err, warning := validator.Validate(fctx)
 				if err != nil {
 					switch err.(type) {
 					case *Error:
 						errs = append(errs, newErrorf("[%v] %v", mi.Key(), err))
 						if ctx.Options.StopOnError {
-							return errs[0]
+							return errs[0], warning
 						}
 					default:
-						return err
+						return err, warning
 					}
+				}
+				if warning != nil {
+					warnings = append(warnings, newWarningf("[%v] %v", mi.Key(), warning))
 				}
 			}
 		default:
-			return isItemsAllowed(ctx.Value.Type(), "items", nil)
+			return isItemsAllowed(ctx.Value.Type(), "items", nil), nil
+		}
+
+		// De-dup this.
+		var warning error
+		if len(warnings) > 0 {
+			warningmsg := warnings[0].Error()
+			for i := 1; i < len(warnings); i++ {
+				warningmsg += " and " + warnings[i].Error()
+			}
+
+			warning = newWarning(warningmsg)
 		}
 
 		if len(errs) > 0 {
@@ -278,10 +313,10 @@ func Items(validator Validator) Validator {
 				msg += " and " + errs[i].Error()
 			}
 
-			return newError(msg)
+			return newError(msg), warning
 		}
 
-		return nil
+		return nil, warning
 	})
 }
 
@@ -298,18 +333,18 @@ func isItemsAllowed(t reflect.Type, name string, args []string) error {
 
 // Length requires the length of a string, array, slice, or map to be exactly len.
 func Length(len int) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		switch val.Kind() {
 		case reflect.String, reflect.Array, reflect.Slice, reflect.Map:
 			if val.Len() != len {
-				return newErrorf("must be of length %d", len)
+				return newErrorf("must be of length %d", len), nil
 			}
-			return nil
+			return nil, nil
 		case reflect.Ptr:
-			return newErrorf("must be of length %d", len)
+			return newErrorf("must be of length %d", len), nil
 		default:
-			return isLengthAllowed(val.Type(), "length", nil)
+			return isLengthAllowed(val.Type(), "length", nil), nil
 		}
 	})
 }
@@ -337,93 +372,93 @@ func isLengthAllowed(t reflect.Type, name string, args []string) error {
 
 // LessThan requires the value to be less than the specified value.
 func LessThan(other interface{}) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		if val.Kind() == reflect.Ptr {
-			return newErrorf("must be less than %v", other)
+			return newErrorf("must be less than %v", other), nil
 		}
 
 		r, err := cmp(val, reflect.ValueOf(other))
 		if err != nil {
-			return err
+			return err, nil
 		}
 
 		if r >= 0 {
-			return newErrorf("must be less than %v", other)
+			return newErrorf("must be less than %v", other), nil
 		}
 
-		return nil
+		return nil, nil
 	})
 }
 
 // LessThanOrEqual requires the value to be less than or equal to the specified value.
 func LessThanOrEqual(other interface{}) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		if val.Kind() == reflect.Ptr {
-			return newErrorf("must be less than or equal to %v", other)
+			return newErrorf("must be less than or equal to %v", other), nil
 		}
 
 		r, err := cmp(val, reflect.ValueOf(other))
 		if err != nil {
-			return err
+			return err, nil
 		}
 
 		if r > 0 {
-			return newErrorf("must be less than or equal to %v", other)
+			return newErrorf("must be less than or equal to %v", other), nil
 		}
 
-		return nil
+		return nil, nil
 	})
 }
 
 // MaxLength requires the length of a string, array, slice, or map to be less than or equal to len.
 func MaxLength(len int) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		switch val.Kind() {
 		case reflect.String, reflect.Array, reflect.Slice, reflect.Map:
 			if val.Len() > len {
-				return newErrorf("must have max length %d", len)
+				return newErrorf("must have max length %d", len), nil
 			}
-			return nil
+			return nil, nil
 		case reflect.Ptr:
-			return newErrorf("must have max length %d", len)
+			return newErrorf("must have max length %d", len), nil
 		default:
-			return isLengthAllowed(val.Type(), "maxlength", nil)
+			return isLengthAllowed(val.Type(), "maxlength", nil), nil
 		}
 	})
 }
 
 // MinLength requires the length of a string, array, slice, or map to be greater than or equal to len.
 func MinLength(len int) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		switch val.Kind() {
 		case reflect.String, reflect.Array, reflect.Slice, reflect.Map:
 			if val.Len() < len {
-				return newErrorf("must have min length %d", len)
+				return newErrorf("must have min length %d", len), nil
 			}
-			return nil
+			return nil, nil
 		case reflect.Ptr:
-			return newErrorf("must have min length %d", len)
+			return newErrorf("must have min length %d", len), nil
 		default:
-			return isLengthAllowed(val.Type(), "minlength", nil)
+			return isLengthAllowed(val.Type(), "minlength", nil), nil
 		}
 	})
 }
 
 // Nil requires the value of any type that can be a pointer to be nil.
 func Nil() Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		switch ctx.Value.Kind() {
 		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
 			if !ctx.Value.IsNil() {
-				return newError("must be nil")
+				return newError("must be nil"), nil
 			}
-			return nil
+			return nil, nil
 		default:
-			return isNilAllowed(ctx.Value.Type(), "nil", nil)
+			return isNilAllowed(ctx.Value.Type(), "nil", nil), nil
 		}
 	})
 }
@@ -441,24 +476,24 @@ func isNilAllowed(t reflect.Type, name string, args []string) error {
 type NoOpValidator struct{}
 
 // Validate implements the Validator interface.
-func (NoOpValidator) Validate(Context) error {
-	return nil
+func (NoOpValidator) Validate(Context) (error, error) {
+	return nil, nil
 }
 
 // NotEmpty requires the length of a string, array, slice, or map to be greater than 0.
 func NotEmpty() Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		switch val.Kind() {
 		case reflect.String, reflect.Array, reflect.Slice, reflect.Map:
 			if val.Len() == 0 {
-				return newError("must not be empty")
+				return newError("must not be empty"), nil
 			}
-			return nil
+			return nil, nil
 		case reflect.Ptr:
-			return newError("must not be empty")
+			return newError("must not be empty"), nil
 		default:
-			return isNotEmptyAllowed(val.Type(), "notempty", nil)
+			return isNotEmptyAllowed(val.Type(), "notempty", nil), nil
 		}
 	})
 }
@@ -476,36 +511,36 @@ func isNotEmptyAllowed(t reflect.Type, name string, args []string) error {
 
 // NotEqual requires the value to not be equal to the specified value.
 func NotEqual(other interface{}) Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		val := indirect(ctx.Value)
 		if val.Kind() == reflect.Ptr {
-			return newErrorf("must not be equal to %v", other)
+			return newErrorf("must not be equal to %v", other), nil
 		}
 
 		r, err := cmp(val, reflect.ValueOf(other))
 		if err != nil {
-			return err
+			return err, nil
 		}
 
 		if r == 0 {
-			return newErrorf("must not be equal to %v", other)
+			return newErrorf("must not be equal to %v", other), nil
 		}
 
-		return nil
+		return nil, nil
 	})
 }
 
 // NotNil requires the value of any type that can be a pointer to not be nil.
 func NotNil() Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		switch ctx.Value.Kind() {
 		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
 			if ctx.Value.IsNil() {
-				return newError("must not be nil")
+				return newError("must not be nil"), nil
 			}
-			return nil
+			return nil, nil
 		default:
-			return isNotNilAllowed(ctx.Value.Type(), "notnil", nil)
+			return isNotNilAllowed(ctx.Value.Type(), "notnil", nil), nil
 		}
 	})
 }
@@ -528,34 +563,52 @@ func Or(validators ...Validator) Validator {
 		return validators[0]
 	}
 
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		var errs []error
+		var warnings []error
 		for _, v := range validators {
-			err := v.Validate(ctx)
-			if err == nil {
-				return nil
+			err, warning := v.Validate(ctx)
+			if err == nil && warning == nil {
+				return nil, nil
 			}
 			if err != nil {
 				errs = append(errs, err)
 			}
+			if warning != nil {
+				warnings = append(warnings, warning)
+			}
 		}
 
-		msg := errs[0].Error()
-		for i := 1; i < len(errs); i++ {
-			msg += " or " + errs[i].Error()
+		var warning error
+		if len(warnings) > 0 {
+			warningmsg := warnings[0].Error()
+			for i := 1; i < len(warnings); i++ {
+				warningmsg += " and " + warnings[i].Error()
+			}
+
+			warning = newWarning(warningmsg)
 		}
 
-		return newError(msg)
+		if len(errs) > 0 {
+			errmsg := errs[0].Error()
+			for i := 1; i < len(errs); i++ {
+				errmsg += " or " + errs[i].Error()
+			}
+
+			return newError(errmsg), warning
+		}
+
+		return nil, warning
 	})
 }
 
 // Zero requires the value to be the zero value.
 func Zero() Validator {
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		if !isZero(ctx.Value) {
-			return newErrorf("must be \"%v\"", zeroValue(ctx.Value.Type()))
+			return newErrorf("must be \"%v\"", zeroValue(ctx.Value.Type())), nil
 		}
-		return nil
+		return nil, nil
 	})
 }
 

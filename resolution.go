@@ -48,12 +48,12 @@ func buildValidator(ctx ResolutionContext) (Validator, error) {
 	// buildNonImplValidator(), which will strip off the * and call back here.
 	var validatorImpl Validator = NoOpValidator{}
 	if ctx.Type.Implements(tValidator) && reflect.PtrTo(ctx.Type).Implements(tValidator) { // Copy receiver.
-		validatorImpl = ValidatorFunc(func(ctx Context) error {
+		validatorImpl = ValidatorFunc(func(ctx Context) (error, error) {
 			v := ctx.Value.Interface().(Validator)
 			return v.Validate(ctx)
 		})
 	} else if reflect.PtrTo(ctx.Type).Implements(tValidator) { // Pointer receiver.
-		validatorImpl = ValidatorFunc(func(ctx Context) error {
+		validatorImpl = ValidatorFunc(func(ctx Context) (error, error) {
 			var ptr reflect.Value
 			if ctx.Value.CanAddr() {
 				ptr = ctx.Value.Addr()
@@ -85,7 +85,7 @@ func buildNonImplValidator(ctx ResolutionContext) (Validator, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ValidatorFunc(func(ctx Context) error {
+		return ValidatorFunc(func(ctx Context) (error, error) {
 			pctx := ctx
 			pctx.Parent = &ctx
 			pctx.Value = ctx.Value.Elem()
@@ -94,11 +94,11 @@ func buildNonImplValidator(ctx ResolutionContext) (Validator, error) {
 		}), nil
 	case reflect.Interface:
 		registry := ctx.registry
-		return ValidatorFunc(func(ctx Context) error {
+		return ValidatorFunc(func(ctx Context) (error, error) {
 			val := ctx.Value.Elem()
 			v, err := registry.LookupValidator(val.Type())
 			if err != nil {
-				return err
+				return err, nil
 			}
 
 			pctx := ctx
@@ -147,12 +147,12 @@ func buildStructValidator(ctx ResolutionContext) (Validator, error) {
 
 func delayedLookup(r *Registry, t reflect.Type) Validator {
 	var v Validator
-	return ValidatorFunc(func(ctx Context) error {
+	return ValidatorFunc(func(ctx Context) (error, error) {
 		if v == nil {
 			var err error
 			v, err = r.LookupValidator(t)
 			if err != nil {
-				return err
+				return err, nil
 			}
 		}
 
