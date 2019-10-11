@@ -37,7 +37,7 @@ func mergeErrorMessages(errs []error, sep string) string {
 func mergeWarningsAndErrors(warnings []error, errs []error, sep string) (error, error) {
 	var warning error
 	if len(warnings) > 0 {
-		warning = newWarning(mergeErrorMessages(warnings, sep))
+		warning = newError(mergeErrorMessages(warnings, sep))
 	}
 
 	if len(errs) > 0 {
@@ -45,24 +45,6 @@ func mergeWarningsAndErrors(warnings []error, errs []error, sep string) (error, 
 	}
 
 	return nil, warning
-}
-
-func newWarning(msg string) *Warning {
-	return &Warning{Message: msg}
-}
-
-func newWarningf(msg string, args ...interface{}) *Warning {
-	return &Warning{Message: fmt.Sprintf(msg, args...)}
-}
-
-// Warning is a validation warning.
-type Warning struct {
-	Message string
-}
-
-// Warning implements the error interface.
-func (e *Warning) Error() string {
-	return e.Message
 }
 
 func newError(msg string) *Error {
