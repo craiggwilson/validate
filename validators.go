@@ -49,26 +49,7 @@ func And(validators ...Validator) Validator {
 			}
 		}
 
-		var warning error
-		if len(warnings) > 0 {
-			warningmsg := warnings[0].Error()
-			for i := 1; i < len(warnings); i++ {
-				warningmsg += " and " + warnings[i].Error()
-			}
-
-			warning = newWarning(warningmsg)
-		}
-
-		if len(errs) > 0 {
-			errmsg := errs[0].Error()
-			for i := 1; i < len(errs); i++ {
-				errmsg += " and " + errs[i].Error()
-			}
-
-			return newError(errmsg), warning
-		}
-
-		return nil, warning
+		return mergeWarningsAndErrors(warnings, errs, "and")
 	})
 }
 
@@ -235,6 +216,32 @@ func In(values ...interface{}) Validator {
 	})
 }
 
+func mergeErrorMessages(errs []error, sep string) string {
+	paddedSep := fmt.Sprintf(" %s ", sep)
+	if len(errs) == 0 {
+		panic("must provide at least one error")
+	}
+	errmsg := errs[0].Error()
+	for i := 1; i < len(errs); i++ {
+		errmsg += paddedSep + errs[i].Error()
+	}
+
+	return errmsg
+}
+
+func mergeWarningsAndErrors(warnings []error, errs []error, sep string) (error, error) {
+	var warning error
+	if len(warnings) > 0 {
+		warning = newWarning(mergeErrorMessages(warnings, sep))
+	}
+
+	if len(errs) > 0 {
+		return newError(mergeErrorMessages(errs, sep)), warning
+	}
+
+	return nil, warning
+}
+
 // Items validates that all the items of a slice, array.
 func Items(validator Validator) Validator {
 	return ValidatorFunc(func(ctx Context) (error, error) {
@@ -296,27 +303,7 @@ func Items(validator Validator) Validator {
 			return isItemsAllowed(ctx.Value.Type(), "items", nil), nil
 		}
 
-		// De-dup this.
-		var warning error
-		if len(warnings) > 0 {
-			warningmsg := warnings[0].Error()
-			for i := 1; i < len(warnings); i++ {
-				warningmsg += " and " + warnings[i].Error()
-			}
-
-			warning = newWarning(warningmsg)
-		}
-
-		if len(errs) > 0 {
-			msg := errs[0].Error()
-			for i := 1; i < len(errs); i++ {
-				msg += " and " + errs[i].Error()
-			}
-
-			return newError(msg), warning
-		}
-
-		return nil, warning
+		return mergeWarningsAndErrors(warnings, errs, "and")
 	})
 }
 
@@ -579,26 +566,7 @@ func Or(validators ...Validator) Validator {
 			}
 		}
 
-		var warning error
-		if len(warnings) > 0 {
-			warningmsg := warnings[0].Error()
-			for i := 1; i < len(warnings); i++ {
-				warningmsg += " and " + warnings[i].Error()
-			}
-
-			warning = newWarning(warningmsg)
-		}
-
-		if len(errs) > 0 {
-			errmsg := errs[0].Error()
-			for i := 1; i < len(errs); i++ {
-				errmsg += " or " + errs[i].Error()
-			}
-
-			return newError(errmsg), warning
-		}
-
-		return nil, warning
+		return mergeWarningsAndErrors(warnings, errs, "or")
 	})
 }
 

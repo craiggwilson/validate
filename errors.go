@@ -5,6 +5,18 @@ import (
 	"reflect"
 )
 
+func wrapError(err error, warning bool) error {
+	if err != nil {
+		return nil
+	}
+
+	if warning {
+		return newWarning(err.Error())
+	}
+
+	return newError(err.Error())
+}
+
 func newWarning(msg string) *Warning {
 	return &Warning{Message: msg}
 }
@@ -14,7 +26,6 @@ func newWarningf(msg string, args ...interface{}) *Warning {
 }
 
 // Warning is a validation warning.
-// TODO(may): Can you write this as wrapper for Error?
 type Warning struct {
 	Message string
 }
