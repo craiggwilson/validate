@@ -49,7 +49,7 @@ func And(validators ...Validator) Validator {
 			}
 		}
 
-		return mergeWarningsAndErrors(warnings, errs, "and")
+		return mergeIntoWarningsAndErrors(warnings, errs, "and")
 	})
 }
 
@@ -283,7 +283,7 @@ func Items(validator Validator) Validator {
 			return isItemsAllowed(ctx.Value.Type(), "items", nil), nil
 		}
 
-		return mergeWarningsAndErrors(warnings, errs, "and")
+		return mergeIntoWarningsAndErrors(warnings, errs, "and")
 	})
 }
 
@@ -546,7 +546,7 @@ func Or(validators ...Validator) Validator {
 			}
 		}
 
-		return mergeWarningsAndErrors(warnings, errs, "or")
+		return mergeIntoWarningsAndErrors(warnings, errs, "or")
 	})
 }
 
