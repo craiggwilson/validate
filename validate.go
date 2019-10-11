@@ -33,7 +33,15 @@ func Validate(obj interface{}, options ...Option) (error, error) {
 	}
 
 	if ctx.Options.WarningsAsErrors {
-		return MergeWarning(validator.Validate(ctx)), nil
+		return mergeWarning(validator.Validate(ctx)), nil
 	}
 	return validator.Validate(ctx)
+}
+
+// ValidateWarningsAsErrors is the same as Validate(), but returns warnings as
+// errors. This is a convenience function for callers that do not care to
+// distinguish between an error and a warning and therefore do not want to deal
+// two returns.
+func ValidateWarningsAsErrors(obj interface{}, options ...Option) error {
+	return mergeWarning(Validate(obj, options...))
 }

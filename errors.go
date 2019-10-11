@@ -5,8 +5,7 @@ import (
 	"reflect"
 )
 
-// MergeWarning is a convenience function for treating a warning as an error.
-func MergeWarning(err error, warning error) error {
+func mergeWarning(err error, warning error) error {
 	if err == nil && warning == nil {
 		return nil
 	}
@@ -34,7 +33,7 @@ func mergeErrorMessages(errs []error, sep string) string {
 	return errmsg
 }
 
-func mergeWarningsAndErrors(warnings []error, errs []error, sep string) (error, error) {
+func mergeIntoWarningsAndErrors(warnings []error, errs []error, sep string) (error, error) {
 	var warning error
 	if len(warnings) > 0 {
 		warning = newError(mergeErrorMessages(warnings, sep))
